@@ -1,0 +1,17 @@
+{
+  "name": "shopify-weight-hs-update",
+  "version": "1.0.0",
+  "description": "Test scripts to update product weight and HS code via Shopify Admin GraphQL API.",
+  "type": "module",
+  "scripts": {
+    "inspect": "node scripts/inspect-product.js",
+    "update": "node scripts/update-product.js",
+    "bulk": "node scripts/bulk-update.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

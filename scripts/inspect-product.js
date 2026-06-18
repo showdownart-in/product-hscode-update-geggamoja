@@ -1,0 +1,77 @@
+import { gql, toProductGid, config } from "../lib/shopify.js";
+
+const PRODUCT_QUERY = /* GraphQL */ `
+  query getProduct($id: ID!) {
+    product(id: $id) {
+      id
+      title
+      handle
+      status
+      variants(first: 100) {
+        edges {
+          node {
+            id
+            title
+            sku
+            inventoryItem {
+              id
+              harmonizedSystemCode
+              countryCodeOfOrigin
+              measurement {
+                weight {
+                  value
+                  unit
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+async function main() {
+  const productInput = process.argv[2];
+  if (!productInput) {
+    console.error(
+      "Usage: npm run inspect -- <productId|productGid|adminUrl>\n" +
+        "Example: npm run inspect -- 1234567890"
+    );
+    process.exit(1);
+  }
+
+  const id = toProductGid(productInput);
+  console.log(`Store:     ${config.store}.myshopify.com`);
+  console.log(`API ver:   ${config.version}`);
+  console.log(`Product:   ${id}\n`);
+
+  const data = await gql(PRODUCT_QUERY, { id });
+  if (!data.product) {
+    console.error("Product not found.");
+    process.exit(1);
+  }
+
+  const p = data.product;
+  console.log(`Title:     ${p.title}`);
+  console.log(`Handle:    ${p.handle}`);
+  console.log(`Status:    ${p.status}`);
+  console.log(`Variants:  ${p.variants.edges.length}\n`);
+
+  const rows = p.variants.edges.map(({ node: v }) => ({
+    Variant: v.title,
+    SKU: v.sku || "—",
+    "Inventory Item ID": v.inventoryItem.id,
+    "HS Code": v.inventoryItem.harmonizedSystemCode || "—",
+    Country: v.inventoryItem.countryCodeOfOrigin || "—",
+    Weight: `${v.inventoryItem.measurement?.weight?.value ?? 0} ${
+      v.inventoryItem.measurement?.weight?.unit ?? ""
+    }`,
+  }));
+  console.table(rows);
+}
+
+main().catch((err) => {
+  console.error("Error:", err.message);
+  process.exit(1);
+});
