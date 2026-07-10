@@ -13,22 +13,34 @@ This guide explains how to programmatically update a product's **weight** and **
 
 ### 1.1 Credentials — Already Provisioned
 
-> **The custom app has already been created and installed on the Shopify store. Your team does not need to set anything up in the Shopify admin.**
+> **The custom app has already been created and installed on both Geggamoja Shopify stores. Your team does not need to set anything up in the Shopify admin.**
 
-You will receive the following two values over a **secure channel** :
+Geggamoja runs **two separate Shopify stores**. The same custom app is installed on each, but each store has its **own store handle and Admin API access token**. You must always pair the correct token with the correct store URL — a B2C token will not work against the B2B endpoint, and vice versa.
 
-| Value                      | Looks like                               | Notes                                                                                               |
-| -------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Store handle**           | `your-store`                             | The part before `.myshopify.com`                                                                    |
-| **Admin API access token** | `shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` | Treat this like a password — anyone with this token has full write access to products and inventory |
+| Store | Purpose | Store handle | Token env variable |
+| --- | --- | --- | --- |
+| **B2C** | Consumer storefront | `geggamoja` | `SHOPIFY_ADMIN_TOKEN` |
+| **B2B** | Wholesale / B2B | `geggamojab2b` | `SHOPIFY_ADMIN_TOKEN_B2B` |
 
-**Handling the token safely:**
+You will receive a `.env` file over a **secure channel** containing all four values:
 
-- Store it in an environment variable or secret manager — **never** commit it to git, Slack, Jira, screenshots, or logs.
-- If the token is ever exposed, request a new one immediately (the old one will be revoked).
-- Once integration work is done, ask for the token to be rotated or the app to be uninstalled.
+```env
+SHOPIFY_STORE=geggamoja
+SHOPIFY_ADMIN_TOKEN=shpat_...
 
-The custom app has already been configured with the **minimum required scopes**:
+SHOPIFY_STORE_B2B=geggamojab2b
+SHOPIFY_ADMIN_TOKEN_B2B=shpat_...
+
+SHOPIFY_API_VERSION=2025-01
+```
+
+**Handling the tokens safely:**
+
+- Store them in environment variables or a secret manager — **never** commit them to git, Slack, Jira, screenshots, or logs.
+- If a token is ever exposed, request a new one immediately (the old one will be revoked).
+- Once integration work is done, ask for the tokens to be rotated or the app to be uninstalled.
+
+The custom app has already been configured with the **minimum required scopes** on both stores:
 
 - `read_products`
 - `write_products`
@@ -47,13 +59,25 @@ The custom app has already been configured with the **minimum required scopes**:
 
 </details>
 
-### 1.2 API Endpoint
+### 1.2 API Endpoints
+
+Each store has its own endpoint. Replace the token with the one that matches that store.
+
+**B2C (consumer):**
 
 ```
-POST https://{your-store}.myshopify.com/admin/api/2025-01/graphql.json
+POST https://geggamoja.myshopify.com/admin/api/2025-01/graphql.json
+Header: X-Shopify-Access-Token: <SHOPIFY_ADMIN_TOKEN>
 ```
 
-Replace `{your-store}` with the store handle you received. Use the latest stable API version (currently `2025-01`).
+**B2B (wholesale):**
+
+```
+POST https://geggamojab2b.myshopify.com/admin/api/2025-01/graphql.json
+Header: X-Shopify-Access-Token: <SHOPIFY_ADMIN_TOKEN_B2B>
+```
+
+Use the latest stable API version (currently `2025-01`). The GraphQL mutation and query examples in this document are identical for both stores — only the endpoint URL and token change.
 
 ### 1.3 Required Request Headers
 
@@ -807,11 +831,13 @@ Do you already have the InventoryItem ID cached?
 
 ## 9. Quick Reference
 
-### Endpoint
+### Endpoints
 
-```
-POST https://{store}.myshopify.com/admin/api/2025-01/graphql.json
-```
+**B2C:** `POST https://geggamoja.myshopify.com/admin/api/2025-01/graphql.json` — token: `SHOPIFY_ADMIN_TOKEN`
+
+**B2B:** `POST https://geggamojab2b.myshopify.com/admin/api/2025-01/graphql.json` — token: `SHOPIFY_ADMIN_TOKEN_B2B`
+
+The queries and mutations below are identical for both stores — only the URL and token differ.
 
 ### Lookup A — Product → All Variants' InventoryItem IDs (filter by SKU client-side)
 

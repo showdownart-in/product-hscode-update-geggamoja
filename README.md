@@ -1,10 +1,10 @@
 # Shopify Weight & HS Code — API Access & Reference
 
-This repository supports updating product **weight** and **HS (Harmonized System) code** on the Geggamoja Shopify store via the **Shopify Admin GraphQL API**.
+This repository supports updating product **weight** and **HS (Harmonized System) code** on the Geggamoja Shopify stores via the **Shopify Admin GraphQL API**.
 
 ## What has been set up for you
 
-The following is **already done** on the Shopify store — your team does not need to create or install anything in Shopify admin:
+The following is **already done** — your team does not need to create or install anything in Shopify admin:
 
 | Item | Status |
 | --- | --- |
@@ -12,9 +12,14 @@ The following is **already done** on the Shopify store — your team does not ne
 | Admin API access | ✅ Enabled with required scopes |
 | API credentials | ✅ Shared separately over a secure channel |
 
-> **Store scope:** The app is installed on the **B2C store only**. It is **not** installed on the B2B store. Use the credentials provided for the B2C store when calling the API.
+> **Store scope:** The app is installed on **both** Geggamoja stores — **B2C** (consumer) and **B2B** (wholesale). Each store has its **own store handle and API token**. Always use the matching pair when calling the API.
 
-**Required scopes (already configured):**
+| Store | Handle | Env variables |
+| --- | --- | --- |
+| **B2C** (consumer) | `geggamoja` | `SHOPIFY_STORE` + `SHOPIFY_ADMIN_TOKEN` |
+| **B2B** (wholesale) | `geggamojab2b` | `SHOPIFY_STORE_B2B` + `SHOPIFY_ADMIN_TOKEN_B2B` |
+
+**Required scopes (already configured on both stores):**
 
 - `read_products`
 - `write_products`
@@ -25,41 +30,61 @@ The following is **already done** on the Shopify store — your team does not ne
 
 ## Using the API credentials
 
-You will receive two values over a **secure channel** (e.g. 1Password, Bitwarden, or an encrypted message — not plain email):
+You will receive a `.env` file over a **secure channel** (e.g. 1Password, Bitwarden, or an encrypted message — not plain email) containing:
 
-| Variable | Description | Example |
-| --- | --- | --- |
-| `SHOPIFY_STORE` | Store handle (part before `.myshopify.com`) | `geggamoja` |
-| `SHOPIFY_ADMIN_TOKEN` | Admin API access token | `shpat_...` |
+```env
+# B2C store
+SHOPIFY_STORE=geggamoja
+SHOPIFY_ADMIN_TOKEN=shpat_...
 
-### API endpoint
+# B2B store
+SHOPIFY_STORE_B2B=geggamojab2b
+SHOPIFY_ADMIN_TOKEN_B2B=shpat_...
 
+SHOPIFY_API_VERSION=2025-01
 ```
-POST https://{SHOPIFY_STORE}.myshopify.com/admin/api/2025-01/graphql.json
-```
+
+### API endpoints
+
+Each store has its own endpoint — **never mix a token with the wrong store URL**:
+
+| Store | Endpoint |
+| --- | --- |
+| B2C | `POST https://geggamoja.myshopify.com/admin/api/2025-01/graphql.json` |
+| B2B | `POST https://geggamojab2b.myshopify.com/admin/api/2025-01/graphql.json` |
 
 ### Request headers
 
 | Header | Value |
 | --- | --- |
-| `X-Shopify-Access-Token` | Your Admin API access token |
+| `X-Shopify-Access-Token` | The token for the store you are calling (B2C or B2B) |
 | `Content-Type` | `application/json` |
 
 ### Quick test (cURL)
 
-Replace placeholders with the credentials you received:
+**B2C:**
 
 ```bash
 curl -X POST \
-  "https://YOUR-STORE.myshopify.com/admin/api/2025-01/graphql.json" \
-  -H "X-Shopify-Access-Token: YOUR_TOKEN" \
+  "https://geggamoja.myshopify.com/admin/api/2025-01/graphql.json" \
+  -H "X-Shopify-Access-Token: YOUR_B2C_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"{ shop { name } }"}'
 ```
 
-A successful response confirms the token is valid.
+**B2B:**
 
-> **Security:** Treat the token like a password. Do not commit it to git, paste it in chat, or share it outside your dev team. If it is ever exposed, request a new token immediately.
+```bash
+curl -X POST \
+  "https://geggamojab2b.myshopify.com/admin/api/2025-01/graphql.json" \
+  -H "X-Shopify-Access-Token: YOUR_B2B_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ shop { name } }"}'
+```
+
+A successful response confirms the token is valid for that store.
+
+> **Security:** Treat both tokens like passwords. Do not commit them to git, paste them in chat, or share them outside your dev team. If either token is ever exposed, request a new one immediately.
 
 ---
 
@@ -67,32 +92,34 @@ A successful response confirms the token is valid.
 
 | File / folder | Purpose |
 | --- | --- |
-| **`SHOPIFY_WEIGHT_HS_CODE_UPDATE.md`** | **Primary documentation.** Full API guide — data model, GraphQL queries/mutations, cURL and Node.js examples. Covers products with no variants, multiple variants, targeting by SKU, and targeting by variant ID. **Use this to build your production integration.** |
+| **`SHOPIFY_WEIGHT_HS_CODE_UPDATE.md`** | **Primary documentation.** Full API guide — data model, GraphQL queries/mutations, cURL and Node.js examples. Covers B2C and B2B, products with no variants, multiple variants, targeting by SKU, and targeting by variant ID. **Use this to build your production integration.** |
 | **`scripts/`** | Optional **test/demo scripts** (Node.js). Reference implementations to verify credentials and see a working update flow. Not required for production. |
-| **`lib/shopify.js`** | Shared GraphQL client used by the demo scripts. |
-| **`.env.example`** | Template for local testing — copy to `.env` and paste in the credentials you received. |
-| **`sample-products.csv`** | Example CSV format for bulk updates (placeholder IDs — replace with real product/variant IDs from your store). |
+| **`lib/shopify.js`** | Shared GraphQL client used by the demo scripts. Supports `--store=b2c` (default) and `--store=b2b`. |
+| **`.env.example`** | Template showing the four credential variables for both stores. |
+| **`sample-products.csv`** | Example CSV format for bulk updates (placeholder IDs — replace with real IDs from your store). |
 | **`README.md`** | This file — overview and quick start. |
 
 ---
 
 ## Demo scripts (optional — for testing only)
 
-These scripts are included **for demonstration and local testing**. Your team can use them to confirm the API credentials work before building your own integration. They are **not** intended as a production tool.
+These scripts are included **for demonstration and local testing**. They are **not** intended as a production tool.
 
 **Requirements:** Node.js 18+
 
 ```bash
 npm install
 cp .env.example .env
-# paste SHOPIFY_STORE and SHOPIFY_ADMIN_TOKEN into .env
+# paste all four credential values into .env
 ```
 
 | Command | What it does |
 | --- | --- |
-| `npm run inspect -- <product-id>` | Read-only — shows current weight, HS code, and IDs for a product |
-| `npm run update -- --product=<id> --weight=0.25 --hs=610910 --dry-run` | Preview an update without writing |
-| `npm run bulk -- ./your-file.csv --dry-run` | Preview bulk updates from CSV |
+| `npm run inspect -- <product-id>` | Read-only on **B2C** (default) |
+| `npm run inspect -- --store=b2b <product-id>` | Read-only on **B2B** |
+| `npm run update -- --product=<id> --weight=0.25 --hs=610910 --dry-run` | Preview update on B2C |
+| `npm run update -- --store=b2b --product=<id> --weight=0.25 --hs=610910 --dry-run` | Preview update on B2B |
+| `npm run bulk -- --store=b2b ./your-file.csv --dry-run` | Preview bulk updates on B2B |
 
 For full script usage and flags, run:
 
@@ -100,14 +127,14 @@ For full script usage and flags, run:
 npm run update
 ```
 
-For production, follow **`SHOPIFY_WEIGHT_HS_CODE_UPDATE.md`** and integrate the GraphQL calls into your own system (ERP, middleware, cron job, etc.).
+For production, follow **`SHOPIFY_WEIGHT_HS_CODE_UPDATE.md`** and integrate the GraphQL calls into your own system. In your integration, store the B2C and B2B credentials separately and route each request to the correct store endpoint.
 
 ---
 
 ## Where to start
 
 1. Read **`SHOPIFY_WEIGHT_HS_CODE_UPDATE.md`** — this is the main integration guide.
-2. Confirm credentials with the cURL test above (or `npm run inspect` if using the demo scripts).
+2. Confirm both tokens with the cURL tests above (or `npm run inspect -- --store=b2c` / `--store=b2b`).
 3. Implement `inventoryItemUpdate` in your own application using the examples in the doc.
 
 ---

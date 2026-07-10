@@ -6,7 +6,8 @@ import {
   toVariantGid,
   toInventoryItemGid,
   getInventoryItemIdForVariant,
-  config,
+  getStoreConfig,
+  parseStoreArg,
 } from "../lib/shopify.js";
 
 /**
@@ -105,11 +106,12 @@ function buildInput(row) {
 }
 
 async function main() {
-  const csvPath = process.argv[2];
-  const dryRun = process.argv.includes("--dry-run");
+  const { store, argv } = parseStoreArg(process.argv.slice(2));
+  const csvPath = argv.find((a) => !a.startsWith("--"));
+  const dryRun = argv.includes("--dry-run");
   if (!csvPath) {
     console.error(
-      "Usage: npm run bulk -- <path-to-csv> [--dry-run]\n" +
+      "Usage: npm run bulk -- [--store=b2c|b2b] <path-to-csv> [--dry-run]\n" +
         "See scripts/bulk-update.js for the CSV format."
     );
     process.exit(1);
@@ -120,8 +122,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Store:     ${config.store}.myshopify.com`);
-  console.log(`API ver:   ${config.version}`);
+  const cfg = getStoreConfig(store);
+  console.log(`Store:     ${cfg.label} — ${cfg.store}.myshopify.com`);
+  console.log(`API ver:   ${cfg.version}`);
   console.log(`CSV:       ${absPath}`);
   console.log(`Dry run:   ${dryRun ? "YES" : "no"}\n`);
 
@@ -150,7 +153,7 @@ async function main() {
           displayName: `inv ${row.inventory_item_id}`,
         });
       } else if (row.variant_id) {
-        const v = await getInventoryItemIdForVariant(toVariantGid(row.variant_id));
+        const v = await getInventoryItemIdForVariant(toVariantGid(row.variant_id), store);
         if (!v) throw new Error(`Variant not found: ${row.variant_id}`);
         targets.push({
           inventoryItemId: v.inventoryItem.id,
@@ -160,7 +163,7 @@ async function main() {
         const productId = toProductGid(row.product_id);
         let variants = variantCache.get(productId);
         if (!variants) {
-          const data = await gql(PRODUCT_QUERY, { id: productId });
+          const data = await gql(PRODUCT_QUERY, { id: productId }, store);
           if (!data.product) throw new Error("Product not found");
           variants = data.product.variants.edges.map((e) => e.node);
           variantCache.set(productId, variants);
@@ -189,7 +192,7 @@ async function main() {
           ok++;
           continue;
         }
-        const res = await gql(UPDATE_MUTATION, { id: t.inventoryItemId, input });
+        const res = await gql(UPDATE_MUTATION, { id: t.inventoryItemId, input }, store);
         const errs = res.inventoryItemUpdate.userErrors;
         if (errs.length) {
           console.error(`✗ ${label} → ${t.displayName} — ${JSON.stringify(errs)}`);

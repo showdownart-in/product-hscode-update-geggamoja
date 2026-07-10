@@ -4,7 +4,8 @@ import {
   toVariantGid,
   toInventoryItemGid,
   getInventoryItemIdForVariant,
-  config,
+  getStoreConfig,
+  parseStoreArg,
 } from "../lib/shopify.js";
 
 const PRODUCT_QUERY = /* GraphQL */ `
@@ -43,9 +44,9 @@ const UPDATE_MUTATION = /* GraphQL */ `
 const VALID_UNITS = new Set(["GRAMS", "KILOGRAMS", "OUNCES", "POUNDS"]);
 
 function parseArgs(argv) {
-  const out = { unit: "KILOGRAMS" };
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
+  const { store, argv: rest } = parseStoreArg(argv.slice(2));
+  const out = { store, unit: "KILOGRAMS" };
+  for (const a of rest) {
     if (a.startsWith("--product=")) out.product = a.slice("--product=".length);
     else if (a.startsWith("--variant=")) out.variant = a.slice("--variant=".length);
     else if (a.startsWith("--inventory-item=")) out.inventoryItem = a.slice("--inventory-item=".length);
@@ -73,25 +74,15 @@ Required (at least one of):
   --hs=<code>                     Harmonized System code (e.g. 610910)
 
 Options:
+  --store=<b2c|b2b>               Store to use (default: b2c)
   --unit=<KILOGRAMS|GRAMS|POUNDS|OUNCES>   Weight unit (default: KILOGRAMS)
   --country=<ISO2>                Country of origin (e.g. SE, IN, US)
   --dry-run                       Show what would change without writing
 
 Examples:
-  # All variants of a product
   npm run update -- --product=1234567890 --weight=0.25 --hs=610910
-
-  # One variant on a product, found by SKU
-  npm run update -- --product=1234567890 --sku=TSHIRT-S-RED --weight=0.20
-
-  # One variant that has NO SKU — target by variant id
-  npm run update -- --variant=9876543210 --weight=0.20 --hs=610910
-
-  # Power user: target inventory item directly (id from \`npm run inspect\`)
-  npm run update -- --inventory-item=12345678 --weight=0.20 --hs=610910
-
-  # Preview without writing
-  npm run update -- --product=1234567890 --weight=0.30 --dry-run
+  npm run update -- --store=b2b --product=1234567890 --weight=0.25 --hs=610910
+  npm run update -- --variant=9876543210 --weight=0.20 --hs=610910 --dry-run
 `);
 }
 
@@ -105,30 +96,25 @@ function buildInput(args) {
   return input;
 }
 
-/**
- * Resolve the user's CLI args to a list of update targets:
- *   [{ label, inventoryItemId }, ...]
- */
 async function resolveTargets(args) {
-  // 1) Direct InventoryItem mode
+  const { store } = args;
+
   if (args.inventoryItem) {
     const id = toInventoryItemGid(args.inventoryItem);
     return [{ label: `inventory-item ${id}`, inventoryItemId: id }];
   }
 
-  // 2) Single variant mode (by variant id) — works for variants WITHOUT SKUs
   if (args.variant) {
     const variantGid = toVariantGid(args.variant);
-    const v = await getInventoryItemIdForVariant(variantGid);
+    const v = await getInventoryItemIdForVariant(variantGid, store);
     if (!v) throw new Error(`Variant not found: ${variantGid}`);
     const label = `${v.sku || "(no sku)"} — ${v.title}  [${v.product.title}]`;
     return [{ label, inventoryItemId: v.inventoryItem.id }];
   }
 
-  // 3) Product mode (optionally filtered by SKU)
   if (args.product) {
     const productId = toProductGid(args.product);
-    const data = await gql(PRODUCT_QUERY, { id: productId });
+    const data = await gql(PRODUCT_QUERY, { id: productId }, store);
     if (!data.product) throw new Error("Product not found.");
     console.log(`Title:     ${data.product.title}`);
 
@@ -160,8 +146,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Store:     ${config.store}.myshopify.com`);
-  console.log(`API ver:   ${config.version}`);
+  const cfg = getStoreConfig(args.store);
+  console.log(`Store:     ${cfg.label} — ${cfg.store}.myshopify.com`);
+  console.log(`API ver:   ${cfg.version}`);
   console.log(`Dry run:   ${args.dryRun ? "YES" : "no"}\n`);
 
   let targets;
@@ -174,7 +161,6 @@ async function main() {
   console.log(`Targets to update: ${targets.length}\n`);
 
   const input = buildInput(args);
-
   let ok = 0;
   let failed = 0;
 
@@ -186,7 +172,7 @@ async function main() {
     }
 
     try {
-      const res = await gql(UPDATE_MUTATION, { id: t.inventoryItemId, input });
+      const res = await gql(UPDATE_MUTATION, { id: t.inventoryItemId, input }, args.store);
       const errs = res.inventoryItemUpdate.userErrors;
       if (errs.length) {
         console.error(`✗ ${t.label} — ${JSON.stringify(errs)}`);
